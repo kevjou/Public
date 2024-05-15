@@ -1,0 +1,83 @@
+---
+title: "Translational Genomics And Computational Biology Assignment 1: Glycolysis Modeling"
+author: "Kevin Jou"
+date: "2023-12-27"
+output: html_document
+---
+
+```{r}
+library(deSolve)
+#R Package with functions that solve initial value problems of a system of first-order ordinary differential equations (ODE), of partial differential equations (PDE), of differential algebraic equations (DAE), and of delay differential equations (DDE).
+
+
+# Define the function for the Selkov system gamma = cooperativity
+selkov <- function(time, state, parameters) {
+  with(as.list(c(state, parameters)), {
+    x <- state[1]
+    y <- state[2]
+    alpha <- parameters[1]
+    gamma <- parameters[2]
+    
+    # Define differential equations
+    dxdt <- 1 - x * y^gamma
+    dydt <- alpha * y * (x * y^(gamma - 1) - 1)
+    
+    # Return the changes
+    return(list(c(dxdt, dydt)))
+  })
+}
+
+# Define initial conditions
+initial_state <- c(x = 0.6, y = 0.4)
+
+# Define parameters
+parameters <- c(alpha = 0.05, gamma = 0.1)  # Example values, adjust as needed
+
+# Define time points
+times <- seq(0, 10, by = 0.01)  # Time span from 0 to 50
+
+# Solve the ODE system
+out <- ode(y = initial_state, times = times, func = selkov, parms = parameters)
+
+# Plot the results
+plot(out, xlab = "Time", ylab = "Concentration", main = "Basic Selkov System")
+legend("topright", legend = c("x", "y"), col = 1:2, lty = 1)
+```
+
+```{r}
+# Alternative differential model for Glycolysis, ref: Evgeni Selkov,Self-oscillations in Glycolysis,European Journal of Biochemistry,Volume 4, 1968, pages 79-86.
+glycolysis <- function(time, state, parameters) {
+  with(as.list(c(state, parameters)), {
+    alpha <- parameters[1]
+    gamma <- parameters[2]
+    u <- state[1]
+    v <- state[2]
+    
+    # Define differential equations
+    dudt <- -u + alpha * v + u^2 * v
+    dvdt <- gamma - alpha * v - u^2 * v
+    
+    # Return the changes
+    return(list(c(dudt, dvdt)))
+  })
+}
+
+# Define initial conditions
+initial_state <- c(u = 0.9, v = 0.7)
+
+# Define parameters
+parameters <- c(alpha = 0.08, gamma = 0.6, t0 = 0, y0 = c(0.9, 0.7), tstop = 50)
+
+# Define time points
+times <- seq(parameters[3], parameters[6], by = 0.1)
+
+# Solve the ODE system
+out <- ode(y = initial_state, times = times, func = glycolysis, parms = parameters[1:2])
+
+# Plot the results
+matplot(out[, "time"], out[, -1], type = "l", lty = 1, col = 1:2, xlab = "Time", ylab = "Concentration", main = "Glycolysis Model")
+legend("topright", legend = c("u", "v"), col = 1:2, lty = 1)
+```
+
+
+
