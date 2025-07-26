@@ -1,0 +1,156 @@
+---
+title: "biostatistics_04"
+author: "Kevin Jou"
+date: "2023-10-03"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(bootstrap)
+```
+
+```{r}
+celldata <- read.delim('cell_id.tab.txt', header = TRUE, sep = "\t", stringsAsFactors=FALSE)
+```
+
+```{r}
+head(celldata, 10)
+```
+
+1) How many rows have 293T in their name ?
+```{r}
+rows293t <- nrow(celldata[grepl("293T", celldata$cell.line), ])
+print(rows293t)
+```
+
+2) What is the name of marker in column 7 in the table  ?
+```{r}
+marker_name <- colnames(celldata)[7]
+marker_name
+```
+
+3) What is the entry in row 2, col 7 ?
+```{r}
+entry <- celldata[2, 7]
+entry
+```
+
+4) For the column labelled "D13S317 " what is most common entry ?
+```{r}
+split_values <- unlist(strsplit(as.character(celldata$D13S317), ","))
+split_values <- as.integer(split_values)
+most_common_entry <- names(sort(table(split_values), decreasing = TRUE))
+```
+
+11 and 12
+
+Use the  weight-height data (weight-height.csv)
+
+1) Randomly select 30 males and 30 females, 
+```{r}
+wh <- read.csv("weight-height.csv",header=TRUE)
+male_wh <- wh[which(wh[,1]=='Male'),]
+female_wh <- wh[which(wh[,1]=='Female'),]
+```
+
+```{r}
+#set seed to make numbers reproducible
+set.seed(123)
+#set mean and stdev to be within sample so indices pull actual values
+random_indices <- sample(rnorm(3, mean = nrow(female_wh)/2, sd = nrow(female_wh)/6),30, replace=TRUE)
+random_indices <- round(random_indices, digits = -1)
+random_indices <- pmax(pmin(random_indices, nrow(wh)), 1)
+#create sample data set using row indices
+male_sample_data <- male_wh[random_indices, ]
+female_sample_data <- female_wh[random_indices, ]
+```
+
+Estimate the mean and its variance using jackknife, for the 30 males, 30 females and all 60 together
+```{r}
+#combined males and females into combined set
+sample_data_all <- rbind(male_sample_data, female_sample_data)
+
+#define theta function to find mean
+theta <- function(x){mean(x)}
+#find means of the three groupings of interest
+male_mean_jack <- jackknife(male_sample_data$Height,theta)
+female_mean_jack <- jackknife(female_sample_data$Height,theta)
+total_mean_jack <- jackknife(sample_data_all$Height,theta)
+mean(male_mean_jack$jack.values)
+mean(female_mean_jack$jack.values)
+mean(total_mean_jack$jack.values)
+```
+
+```{r}
+#Change jackstraw to find variance instead
+theta <- function(x){ m<- mean(x); return(sqrt(mean((x-m)^2)));}
+male_var_jack <- jackknife(male_sample_data$Height,theta)
+female_var_jack <- jackknife(female_sample_data$Height,theta)
+total_var_jack <- jackknife(sample_data_all$Height,theta)
+mean(male_var_jack$jack.values)
+mean(female_var_jack$jack.values)
+mean(total_var_jack$jack.values)
+```
+
+Estimate the mean and variance using bootstrap for the 30 males, 30 females and all 60 together
+
+```{r}
+#find mean
+male_mean_boot <- bootstrap(male_sample_data$Height,1000, mean)
+female_mean_boot <- bootstrap(female_sample_data$Height,1000, mean)
+total_mean_boot <- bootstrap(sample_data_all$Height,1000, mean)
+mean(male_mean_boot$thetastar)
+mean(female_mean_boot$thetastar)
+mean(total_mean_boot$thetastar)
+```
+
+```{r}
+#find variance
+theta <- function(x){ m<- mean(x); return(sqrt(mean((x-m)^2)));}
+male_var_boot <- bootstrap(male_sample_data$Height,1000, theta)
+female_var_boot <- bootstrap(female_sample_data$Height,1000, theta)
+total_var_boot <- bootstrap(sample_data_all$Height,1000, theta)
+mean(male_var_boot$thetastar)
+mean(female_var_boot$thetastar)
+mean(total_var_boot$thetastar)
+
+```
+
+Use 10,000 samples
+
+```{r}
+#find mean
+male_mean_boot <- bootstrap(male_sample_data$Height,10000, mean)
+female_mean_boot <- bootstrap(female_sample_data$Height,10000, mean)
+total_mean_boot <- bootstrap(sample_data_all$Height,10000, mean)
+mean(male_mean_boot$thetastar)
+mean(female_mean_boot$thetastar)
+mean(total_mean_boot$thetastar)
+
+#find variance
+theta <- function(x){ m<- mean(x); return(sqrt(mean((x-m)^2)));}
+male_var_boot <- bootstrap(male_sample_data$Height,10000, theta)
+female_var_boot <- bootstrap(female_sample_data$Height,10000, theta)
+total_var_boot <- bootstrap(sample_data_all$Height,10000, theta)
+mean(male_var_boot$thetastar)
+mean(female_var_boot$thetastar)
+mean(total_var_boot$thetastar)
+```
+
+d) Are the numbers consistent between jackknife and bootstrap  ?
+  Yes the values found using both Jackknife and Bootstrap are comparable likely because the distribution of weights and heights is gaussian.
+  
+3) Sample without replacement people's heights and weights from our weight-height data. Demonstrate the correlation between height and weight in this sample
+
+```{r}
+results <- numeric(50)
+for (i in 1:50) {
+  sample_data <- wh[sample(nrow(wh), 100, replace = FALSE), ]
+  correlation <- cor(sample_data$Height, sample_data$Weight, method = "spearman")
+  results[i] <- correlation
+  }
+print(results)
+```
+After random sampling of 50 samples without replacement, and repeating the procedure 50 times, we see a close correlation between weight and height of greater than 0.88 at lowest and up to 0.94 correlation at highest.  This suggests that the correlation between weight and height is true even when randomly sampling smaller sets from the larger data.
+
