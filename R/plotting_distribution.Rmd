@@ -1,0 +1,120 @@
+---
+title: "biostatistics_assignment03"
+author: "Kevin Jou"
+date: "2023-09-26"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(reshape2)
+library(ggplot2)
+```
+
+```{r}
+wh <- read.csv("weight-height.csv",header=TRUE)
+```
+
+## 1)  Plot the distribution of heights in the group.
+
+```{r}
+#list distribution of rounded heights
+rounded_heights <- round(wh$"Height", 0)
+hist(rounded_heights, main="Distribution of Heights", xlab="Height (rounded)", ylab="Frequency")
+```
+## Is the distribution Gaussian ?
+Yes, the shape of the distribution appears to follow that of a normal distribution.
+## 3) If the distribution is Gaussian, does it mean there are no sub groups ?  
+Not necessarily, it could mean that sub groups within the grouped distribution may follow a normal distribution as well, with the largest overlap of the subgroups appearing where the mean of the grouped distribution lies. 
+
+## 4) Plot the distribution of heights of men in black and women in red on the same graph  and for the whole group (in blue)
+
+```{r}
+# Filter data for males and females
+males <- subset(wh, wh$Gender == "Male")
+females <- subset(wh, wh$Gender == "Female")
+
+# Round heights for males and females
+rounded_heights_male <- round(males$"Height", 0)
+rounded_heights_female <- round(females$"Height", 0)
+
+# Create histograms for males, females, and whole group
+hist(rounded_heights, main="Distribution of Heights", xlab="Height (rounded)", ylab="Frequency", col="lightblue")
+hist(rounded_heights_male, col="black", add=TRUE)
+hist(rounded_heights_female, col="red", add=TRUE)
+```
+## Are the “Male” and “Female” distributions gaussian ?
+In this case they do appear to both be gaussian for height.
+## 5) Repeat 1-4 with weight instead of height
+```{r}
+rounded_weights <- round(wh$"Weight", 0)
+hist(rounded_heights, main="Distribution of Weights", xlab="Weight (rounded)", ylab="Frequency")
+
+# Round weights for males and females
+rounded_weights_male <- round(males$"Weight", 0)
+rounded_weights_female <- round(females$"Weight", 0)
+
+# Create histograms for males, females, and whole group
+hist(rounded_weights, main="Distribution of Heights", xlab="Height (rounded)", ylab="Frequency", col="lightblue")
+hist(rounded_weights_male, col="black", add=TRUE)
+hist(rounded_weights_female, col="red", add=TRUE)
+```
+## Is the distribution Gaussian ?
+No, the shape of the distribution appears to follow that of a bimodal distribution.
+
+## Are the “Male” and “Female” distributions gaussian ?
+In this case they do appear to both be gaussian for weight, but are significantly far apart as to create the bimodal distribution when combined.
+## 6) plot height (x-axis) versus weight (y-axis) for the group
+
+```{r}
+#Plot distribution of height vs. weight, one dot represents one individual
+plot(wh$"Height", wh$"Weight", main="Height vs. Weight", xlab="Height", ylab="Weight", pch=16, col="blue")
+```
+
+## 7) plot height versus weight, separately for men (in black) and women (red).
+
+```{r}
+plot(males$Weight, males$Height, pch=16, col="black", xlab="Weight", ylab="Height", main="Weight vs. Height (Males)",xlim=c(40, max(males$Weight)), ylim=c(50, max(males$Height)))
+points(females$Weight, females$Height, pch=16, col="red")
+legend("topleft", legend=c("Males", "Females"), col=c("black", "red"), pch=16)
+
+```
+# 8) Discuss the following
+   a) is height a good proxy for weight ?
+   Height may act as a decent proxy for weight, depending on the margin of error that you wish to account for as there does appear to be a positive correlation between height and weight.
+
+   b) Is the rate of increase in weight with height higher for men or for women ?
+   It appears to be about equal for both genders, maybe higher in men but both genders appear to show very similar correlations between height and weight.
+
+   c) Based on these plots and values for standard deviations and means, for which group (men versus women) is the height a better proxy for weight ?
+   The men since they exhibit lower overall variability for height and weight while showing a correlation for height and weight.  This points torward a stronger basis for assuming better fitting of the data to males.
+
+
+   d_ Would binning the data on height and weight and using a 3-d plot give a better picture ?
+   It would allow for a third dimension which may better represent the real factors which can contribute to weight and height as well.  Such as age/other demographic information.
+   
+# 9) Use the dataset called iris.
+   a) Describe the data through two interesting plots.
+   b) Use the reshape2 package to show multiple panels in one plot
+```{r}
+data(iris)
+ggplot(iris, aes(x = Sepal.Length, y = Sepal.Width, color = Species)) +
+  geom_point() +
+  labs(title="Scatter Plot of Sepal Length vs Sepal Width", x="Sepal Length", y="Sepal Width")
+
+ggplot(iris, aes(x = Sepal.Length, y = Petal.Length, color = Species)) +
+  geom_point() +
+  labs(title="Scatter Plot of Sepal Length vs Petal Length", x="Sepal Length", y="Petal Length")
+```
+
+```{r}
+library(reshape2)
+library(ggplot2)
+melted_iris <- melt(iris, id.vars="Species")
+ggplot(melted_iris, aes(x=variable, y=value, fill=Species)) +
+  geom_dotplot(binaxis='y', stackdir='center', position=position_dodge(0.75)) +
+  facet_wrap(~variable, scales="free_y") +
+  labs(title="Panel Plot of Iris Measurements", x="Measurement", y="Value") +
+  theme(legend.position="top")  # Move legend to the top
+```
+
