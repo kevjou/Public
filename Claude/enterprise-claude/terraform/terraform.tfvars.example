@@ -1,0 +1,35 @@
+# Copy to terraform.tfvars and fill in values. Never commit terraform.tfvars.
+
+aws_region   = "us-east-1"
+environment  = "prod"
+project_name = "enterprise-claude"
+
+availability_zones = ["us-east-1a", "us-east-1b"]
+vpc_cidr           = "10.0.0.0/16"
+
+# ECR image — build proxy/ and push first:
+#   aws ecr create-repository --repository-name claude-proxy
+#   docker build -t claude-proxy ./proxy
+#   docker tag claude-proxy:latest <account>.dkr.ecr.us-east-1.amazonaws.com/claude-proxy:latest
+#   docker push <account>.dkr.ecr.us-east-1.amazonaws.com/claude-proxy:latest
+proxy_image         = "123456789012.dkr.ecr.us-east-1.amazonaws.com/claude-proxy:latest"
+proxy_desired_count = 2
+proxy_min_count     = 2
+proxy_max_count     = 10
+
+# Create this secret before applying:
+#   aws secretsmanager create-secret \
+#     --name enterprise-claude/anthropic-api-key \
+#     --secret-string "sk-ant-..."
+anthropic_api_key_secret_arn = "arn:aws:secretsmanager:us-east-1:123456789012:secret:enterprise-claude/anthropic-api-key-XXXXXX"
+
+# ACM certificate for your domain (must be in us-east-1 for ALB)
+acm_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+
+app_domain   = "claude-internal.yourcompany.com"
+alert_email  = "platform-alerts@yourcompany.com"
+
+log_retention_days        = 2190  # 6 years (HIPAA minimum)
+audit_log_retention_years = 6
+mfa_configuration         = "ON"
+waf_rate_limit            = 500
