@@ -1,0 +1,218 @@
+---
+title: "genefiltering"
+author: "Kevin Jou"
+date: "2026-04-08"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(Biobase)
+library(dplyr)
+
+# --- 1a. Compute row-wise variance on the expression matrix ---
+expr_mat <- exprs(eset)  # rows = probes, cols = samples
+
+row_vars <- apply(expr_mat, 1, var)
+
+# Keep top N most variable probes (tune as needed; 500–5000 is typical for PCA)
+top_n <- 2000
+top_probes <- names(sort(row_vars, decreasing = TRUE))[1:top_n]
+
+# --- 1b. Subset and attach gene symbols ---
+expr_var <- expr_mat[top_probes, ]
+
+symbols <- fData(eset)[top_probes, "SYMBOL"]
+
+# Handle probes with missing or duplicated symbols
+# Option A: drop probes with no symbol
+keep <- !is.na(symbols) & symbols != ""
+expr_var <- expr_var[keep, ]
+symbols   <- symbols[keep]
+
+# Option B (recommended): collapse duplicate symbols by keeping highest-variance probe
+df_var <- as.data.frame(expr_var)
+df_var$SYMBOL <- symbols
+df_var$var    <- apply(expr_var, 1, var)
+
+df_pca <- df_var %>%
+  group_by(SYMBOL) %>%
+  slice_max(order_by = var, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  select(-var) %>%
+  column_to_rownames("SYMBOL")
+
+# df_pca: rows = unique gene symbols, cols = samples — ready for PCA
+```
+
+```{r}
+pca_res <- prcomp(t(df_pca), scale. = TRUE)
+```
+
+```{r}
+library(limma)
+
+# --- 2a. Subset eset to labeled samples only ---
+labeled_idx <- pData(eset)$group %in% c("good", "bad")
+eset_labeled <- eset[, labeled_idx]
+
+group <- factor(pData(eset_labeled)$group, levels = c("good", "bad"))
+
+# --- 2b. Design matrix and contrast ---
+design <- model.matrix(~0 + group)
+colnames(design) <- levels(group)
+
+cm <- makeContrasts(
+  good_vs_bad = good - bad,
+  levels = design
+)
+
+# --- 2c. Fit model ---
+fit  <- lmFit(eset_labeled, design)
+fit2 <- contrasts.fit(fit, cm)
+fit2 <- eBayes(fit2, trend = TRUE)  # trend=TRUE is recommended for log2-RMA data
+
+# --- 2d. Extract all results ---
+results <- topTable(
+  fit2,
+  coef       = "good_vs_bad",
+  number     = Inf,
+  adjust.method = "BH",
+  sort.by    = "P"
+)
+
+# results already has fData columns if annotateEset() was run beforehand
+# If SYMBOL isn't in results, merge it in:
+results$SYMBOL <- fData(eset)[rownames(results), "SYMBOL"]
+
+# --- 2e. Filter for significance ---
+sig_results <- results %>%
+  filter(
+    adj.P.Val < 0.05,
+    abs(logFC) >= log2(1.5)   # ~1.5 -fold change in linear scale; adjust to taste
+  ) %>%
+  filter(!is.na(SYMBOL) & SYMBOL != "")
+
+# --- 2f. Collapse to gene symbols (keep probe with lowest adj p-val per symbol) ---
+sig_results_dedup <- sig_results %>%
+  group_by(SYMBOL) %>%
+  slice_min(order_by = adj.P.Val, n = 1, with_ties = FALSE) %>%
+  ungroup()
+
+# --- 2g. Build the final expression data frame for significant genes ---
+sig_probes <- rownames(sig_results_dedup)  # these are still probe IDs at this point
+
+df_sig <- as.data.frame(exprs(eset)[sig_probes, ]) %>%
+  mutate(SYMBOL = sig_results_dedup$SYMBOL[match(sig_probes, rownames(sig_results_dedup))]) %>%
+  column_to_rownames("SYMBOL")
+
+# df_sig: rows = significant gene symbols, cols = ALL samples (including unlabeled)
+```
+
+```{r}
+library(ggplot2)
+library(ggrepel)  # for non-overlapping gene labels
+
+# --- Prepare annotation column ---
+results <- results %>%
+  mutate(
+    significance = case_when(
+      adj.P.Val < 0.05 & logFC >  log2(1.5) ~ "Up in good",
+      adj.P.Val < 0.05 & logFC < -log2(1.5) ~ "Up in bad",
+      TRUE                                   ~ "NS"
+    ),
+    neg_log10_p = -log10(adj.P.Val),
+    # Cap extreme p-values for visual clarity
+    neg_log10_p_capped = pmin(neg_log10_p, 10)
+  )
+#check max(results$neg_log10_p) to adjust p-value caps
+# --- Label top genes (lowest adj p-val among significant) ---
+top_labels <- results %>%
+  filter(significance != "NS") %>%
+  slice_min(order_by = adj.P.Val, n = 20, with_ties = FALSE)
+
+# --- Color palette ---
+sig_colors <- c(
+  "Up in good" = "#E63946",
+  "Up in bad"  = "#457B9D",
+  "NS"         = "grey70"
+)
+
+# --- Plot ---
+volcano <- ggplot(results, aes(x = logFC, y = neg_log10_p_capped, color = significance)) +
+  geom_point(alpha = 0.5, size = 1.2) +
+  geom_point(
+    data = filter(results, significance != "NS"),
+    alpha = 0.8, size = 1.6
+  ) +
+  geom_hline(yintercept = -log10(0.05), linetype = "dashed", color = "grey40", linewidth = 0.5) +
+  geom_vline(xintercept = c(-log2(1.5), log2(1.5)), linetype = "dashed", color = "grey40", linewidth = 0.5) +
+  geom_label_repel(
+    data        = top_labels,
+    aes(label   = SYMBOL),
+    size        = 2.8,
+    max.overlaps = 20,
+    box.padding  = 0.3,
+    label.padding = 0.15,
+    segment.color = "grey50",
+    segment.size  = 0.3,
+    show.legend  = FALSE
+  ) +
+  scale_color_manual(values = sig_colors) +
+  scale_x_continuous(
+    breaks = seq(floor(min(results$logFC)), ceiling(max(results$logFC)), by = 1)
+  ) +
+  labs(
+    title    = "Differential Expression: Good vs. Bad",
+    subtitle = paste0(
+      sum(results$significance == "Up in good"), " up in good  |  ",
+      sum(results$significance == "Up in bad"),  " up in bad"
+    ),
+    x     = expression(log[2]~"Fold Change (good / bad)"),
+    y     = expression(-log[10]~"Adjusted P-Value"),
+    color = NULL
+  ) +
+  theme_classic(base_size = 13) +
+  theme(
+    plot.title      = element_text(face = "bold", hjust = 0.5),
+    plot.subtitle   = element_text(hjust = 0.5, color = "grey40", size = 10),
+    legend.position = "top",
+    legend.key.size = unit(0.4, "cm"),
+    axis.line       = element_line(color = "grey30")
+  ) +
+  annotate("text", x = max(results$logFC) * 0.85, y = -log10(0.05) + 0.15,
+           label = "FDR = 0.05", size = 3, color = "grey40")
+
+print(volcano)
+
+```
+
+```{r}
+genes_of_interest <- c("INS", "GCG", "PDX1", "PTF1A", "NKX6-1")  # replace with yours
+
+custom_labels <- results %>%
+  filter(SYMBOL %in% genes_of_interest)
+
+volcano +
+  geom_point(
+    data  = custom_labels,
+    shape = 21,
+    size  = 3,
+    color = "black",
+    fill  = "gold"
+  ) +
+  geom_label_repel(
+    data         = custom_labels,
+    aes(label    = SYMBOL),
+    size         = 3,
+    color        = "black",
+    fill         = "white",
+    box.padding  = 0.4,
+    fontface     = "bold",
+    show.legend  = FALSE
+  )
+```
+
